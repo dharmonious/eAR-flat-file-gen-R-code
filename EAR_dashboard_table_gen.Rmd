@@ -1,0 +1,113 @@
+---
+title: "EAR flat file generation"
+author: "Daniel Harmon"
+date: "2024-03-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+for (package in c("tidyverse", "magicfor", "lubridate", "RODBC",
+                  "rio", "dplyr", "broom.mixed", "shiny", "psych", "sparklyr", "readxl", "fs", "readxl",
+                  "broom", "DBI", "odbc", "dbplyr", "dtplyr", "data.table", "ggpubr", "robustlmm", 
+                  "lmerTest", "kableExtra", "tibble", "janitor", "here", "glue", "stringr", "rgdal", "sp", "raster", "tigris", "knitr")){
+  if (!require(package, character.only = T, quietly=T)) {
+    install.packages(package)
+    library(package, character.only = T)
+  }}
+```
+
+
+```{r}
+
+server <- "Reportmanager,1542"
+database <- "ReportDB"
+
+conn_str <- sprintf(
+  "driver={SQL Server};server=%s;database=%s;trusted_connection=true",
+  server, database
+)
+
+conn <- odbcDriverConnect(conn_str)
+
+surveys_query <- sprintf("SELECT * FROM %s", "[ReportDB].[EAR2].[SurveysTakenPWS]")
+answer_query <- sprintf("SELECT * FROM %s", "[ReportDB].[EAR2].[SurveyAnswer]")
+#tinwsys_query <- sprintf("SELECT * FROM %s", "[ReportDB].[SDWIS].[TINWSYS]")
+question_query <- sprintf("SELECT * FROM %s", "[ReportDB].[EAR2].[EARUserInstructions]")
+
+
+survey <- sqlQuery(conn,  surveys_query)
+answer <- sqlQuery(conn,  answer_query)
+question <- sqlQuery(conn,  question_query)
+
+old_survey_query <- sprintf("SELECT * FROM %s", "[ReportDB].[EAR2].[EARSurveyResults]")
+#tinwsys_query <- sprintf("SELECT * FROM %s", "[ReportDB].[SDWIS].[TINWSYS]")
+old_question_query <- sprintf("SELECT * FROM %s", "[ReportDB].[EAR].[EARUserInstructions]")
+
+
+#old_survey <- sqlQuery(conn,  old_survey_query)
+#old_question <- sqlQuery(conn,  old_question_query)
+
+
+```
+##Notes about pre-post 2020 EAR crosswalk
+
+Some columns need to be renamed and some columns need to be concatenated and morphed to make consistent
+
+--PWSID in ear_2019 needs to be renamed "WSID" so it will coincide with ear_2020 and onwards
+--ear_2019 needs to combine "Survey" and "Year" and rename the column "SurveyName" to coincide with EAR_2020 and onwards
+----ear_2019 survey splits by "SWS" and "LWS" while ear_2020 does not differentiate between 
+--ear_2019 QuestionName corresponds to ear_2020 "OldShortName_QuestionText"
+--ear_2019 needs to concatenate "SectionName" and "SectionID" to coincide with ear_2020 "SectionID". 
+----In addtion ear_2019 needs to pad the "SectionID" to 2 digits to match the formatting of ear_2020 "SectionID"
+----WARNING: ear_2019 SectionID 00 does not seem to correspond to any ear_2020 section
+
+The below chunk connects the specific surveys answer information from SurveyAnswer table with the water system information from SurveysTakenPWS table to match water systems with the answers then removing superfluous columns. I rename SurveyQuestionId to QuestionID so that it will connect to the UserInstructions table.
+
+I then filter out extraneous sections to focus on supply & demand and emergency information. I also pull metered questions from other sections because metering is a field of interest but not the entire section.
+
+
+```{r}
+survey_answer <- survey%>%
+  inner_join(answer)
+
+ear_sb552 <- survey_answer%>%
+  dplyr::select(
+    Survey,
+    WSID,
+    WSName,
+    StatusName,
+    SurveyId,
+    SurveysTakenId,
+    QuestionID = SurveyQuestionId,
+    AnswerText
+  )%>%
+  inner_join(question)%>%
+  filter(SectionName %in% c("06 Supply-Delivery", "16 Emergency") |
+           ShortName %in% c("SourcesMetered", "CurTotalConnections", "ConnectionsMeterRecordsKept"))
+
+ear_sb552 <- ear_sb552%>%
+  dplyr::select(
+    Survey,
+    WSID,
+    SurveysTakenId,
+    QuestionText,
+    AnswerText,
+    ShortName,
+    PII,
+    Public,
+    WSName,
+    CWSAssigned,
+    UWSAssigned
+  )
+
+ear_sb552%>% filter(ShortName %in% c("SourcesMetered", "CurTotalConnections", "ConnectionsMeterRecordsKept"))%>%View()
+
+  group_by(ShortName)%>%
+  distinct(QuestionText)%>%View()
+
+```
+
+
+
