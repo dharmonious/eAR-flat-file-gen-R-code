@@ -85,7 +85,8 @@ ear_sb552 <- survey_answer%>%
   )%>%
   inner_join(question)%>%
   filter(SectionName %in% c("06 Supply-Delivery", "16 Emergency") |
-           ShortName %in% c("SourcesMetered", "CurTotalConnections", "ConnectionsMeterRecordsKept"))
+           ShortName %in% c("PopulationTotal", "PopulationRes", "SourcesMetered", 
+                            "CurTotalConnections", "ConnectionsMeterRecordsKept"))
 
 ear_sb552 <- ear_sb552%>%
   dplyr::select(
@@ -103,6 +104,8 @@ ear_sb552 <- ear_sb552%>%
   )
 
 ear_sb552%>% filter(ShortName %in% c("SourcesMetered", "CurTotalConnections", "ConnectionsMeterRecordsKept"))%>%View()
+
+#ear_sb552%>%export("ear_flat_file.csv")
 
   group_by(ShortName)%>%
   distinct(QuestionText)%>%View()
